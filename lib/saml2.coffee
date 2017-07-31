@@ -28,8 +28,9 @@ class SAMLError extends Error
 # request.
 create_authn_request = (issuer, assert_endpoint, destination, force_authn, context, nameid_format) ->
   if context?
-    context_element = _(context.class_refs).map (class_ref) -> 'saml:AuthnContextClassRef': class_ref
-    context_element.push '@Comparison': context.comparison
+    context_element = _(context.class_refs).map (class_ref) ->
+      'saml:AuthnContextClassRef': class_ref
+      '@Comparison': context.comparison
 
   id = '_' + crypto.randomBytes(21).toString('hex')
   xml = xmlbuilder.create
@@ -60,32 +61,56 @@ sign_authn_request = (xml, private_key, options) ->
   return signer.getSignedXml()
 
 # Creates metadata and returns it as a string of XML. The metadata has one POST assertion endpoint.
-create_metadata = (entity_id, assert_endpoint, signing_certificates, encryption_certificates) ->
+create_metadata = (entity_id, assert_endpoint, signing_certificates, encryption_certificates, logout_endpoint, nameid_format, authn_requests_signed = false, want_assertions_signed = false) ->
+  unless logout_endpoint
+    logout_endpoint = assert_endpoint
   signing_cert_descriptors = for signing_certificate in signing_certificates or []
     {'md:KeyDescriptor': certificate_to_keyinfo('signing', signing_certificate)}
 
   encryption_cert_descriptors = for encryption_certificate in encryption_certificates or []
     {'md:KeyDescriptor': certificate_to_keyinfo('encryption', encryption_certificate)}
-
+  sp_sso_descriptor_parts = []
+    .concat({
+      '@protocolSupportEnumeration': 'urn:oasis:names:tc:SAML:2.0:protocol',
+      '@AuthnRequestsSigned': authn_requests_signed,
+      '@WantAssertionsSigned': want_assertions_signed,
+    })
+    .concat(signing_cert_descriptors)
+    .concat(encryption_cert_descriptors)
+    .concat([
+      { 'md:SingleLogoutService':
+          '@Binding': 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect'
+          '@Location': logout_endpoint
+        'md:AssertionConsumerService':
+          '@Binding': 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST'
+          '@Location': assert_endpoint
+          '@index': '0'
+        'md:NameIDFormat': {
+          '#text': nameid_format
+        }
+      }
+    ])
+  sp_sso_descriptor = {}
+  for part in sp_sso_descriptor_parts when part
+    for own key of part
+      if Array.isArray(sp_sso_descriptor[key])
+        sp_sso_descriptor[key].push(part[key])
+      else if sp_sso_descriptor[key]
+        sp_sso_descriptor[key] = [sp_sso_descriptor[key], part[key]]
+      else
+        sp_sso_descriptor[key] = part[key]
   xmlbuilder.create
     'md:EntityDescriptor':
       '@xmlns:md': XMLNS.MD
       '@xmlns:ds': XMLNS.DS
       '@entityID': entity_id
       '@validUntil': (new Date(Date.now() + 1000 * 60 * 60)).toISOString()
-      'md:SPSSODescriptor': []
-        .concat {'@protocolSupportEnumeration': 'urn:oasis:names:tc:SAML:1.1:protocol urn:oasis:names:tc:SAML:2.0:protocol'}
-        .concat signing_cert_descriptors
-        .concat encryption_cert_descriptors
-        .concat [
-          'md:SingleLogoutService':
-            '@Binding': 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect'
-            '@Location': assert_endpoint
-          'md:AssertionConsumerService':
-            '@Binding': 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST'
-            '@Location': assert_endpoint
-            '@index': '0'
-        ]
+      'md:SPSSODescriptor': sp_sso_descriptor
+      'md:Organization': {
+        'md:OrganizationName': { '@xml:lang': 'en-US', '#text': 'Venture IQ, B.V.' }
+        'md:OrganizationDisplayName': { '@xml:lang': 'en-US', '#text': 'Venture IQ' }
+        'md:OrganizationURL': { '@xml:lang': 'en-US', '#text': 'https://ventureiq.nl' }
+      }
   .end()
 
 # Creates a LogoutRequest and returns it as a string of xml.
@@ -498,7 +523,7 @@ module.exports.ServiceProvider =
     #
     # Rest of options can be set/overwritten by the identity provider and/or at function call.
     constructor: (options) ->
-      {@entity_id, @private_key, @certificate, @assert_endpoint, @alt_private_keys, @alt_certs} = options
+      {@entity_id, @private_key, @certificate, @assert_endpoint, @logout_endpoint, @alt_private_keys, @alt_certs, @nameid_format, @allow_unencrypted_assertion, @sign_get_request} = options
 
       @alt_private_keys = [].concat(@alt_private_keys or [])
       @alt_certs = [].concat(@alt_certs or [])
@@ -671,7 +696,7 @@ module.exports.ServiceProvider =
     #   XML metadata, used during initial SAML configuration
     create_metadata: =>
       certs = [@certificate].concat @alt_certs
-      create_metadata @entity_id, @assert_endpoint, certs, certs
+      create_metadata @entity_id, @assert_endpoint, certs, certs, @logout_endpoint, @nameid_format, @sign_get_request, !@allow_unencrypted_assertion
 
 module.exports.IdentityProvider =
   class IdentityProvider
