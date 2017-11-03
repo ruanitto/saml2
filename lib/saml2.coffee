@@ -126,7 +126,7 @@ create_logout_request = (issuer, name_id, session_index, destination, name_id_fo
       '@Destination': destination
       'saml:Issuer': issuer
       'saml:NameID':
-        '@Format': name_id_format
+        '@Format': name_id_format or ''
         '#text': name_id
       'samlp:SessionIndex': session_index
   .end()
