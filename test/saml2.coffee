@@ -10,14 +10,19 @@ util          = require 'util'
 xmldom        = require 'xmldom'
 xmlcrypto     = require 'xml-crypto'
 
-describe 'saml2', ->
+voidFun = (fun) ->
+  ->
+    fun(...arguments)
+    return
+
+describe 'saml2', voidFun ->
   get_test_file = (filename) ->
     fs.readFileSync("#{__dirname}/data/#{filename}").toString()
 
   has_attribute = (node, attr_name, attr_value) ->
     _(node.attributes).some (attr) -> attr.name is attr_name and attr.value is attr_value
 
-  describe 'private helpers', ->
+  describe 'private helpers', voidFun ->
 
     dom_from_test_file = (filename) ->
       (new xmldom.DOMParser()).parseFromString get_test_file filename
@@ -26,7 +31,7 @@ describe 'saml2', ->
       @good_response_dom = dom_from_test_file "good_response.xml"
 
     # Auth Request, before it is compressed and base-64 encoded
-    describe 'create_authn_request', ->
+    describe 'create_authn_request', voidFun ->
       it 'contains expected fields', ->
         { id, xml } = saml2.create_authn_request 'https://sp.example.com/metadata.xml', 'https://sp.example.com/assert', 'https://idp.example.com/login'
         dom = (new xmldom.DOMParser()).parseFromString xml
@@ -55,7 +60,7 @@ describe 'saml2', ->
         assert.equal requested_authn_context.getElementsByTagNameNS('urn:oasis:names:tc:SAML:2.0:assertion', 'AuthnContextClassRef')[0].firstChild.data, 'context:class'
 
 
-    describe 'create_metadata', ->
+    describe 'create_metadata', voidFun ->
       CERT_1 = get_test_file 'test.crt'
       CERT_2 = get_test_file 'test2.crt'
 
@@ -135,7 +140,7 @@ describe 'saml2', ->
           has_attribute logout_service, 'Location', 'https://sp.example.com/assert',
           "Expected to find an SingleLogoutService with location 'htps://sp.example.com/assert'")
 
-    describe 'format_pem', ->
+    describe 'format_pem', voidFun ->
       it 'formats an unformatted private key', ->
         raw_private_key = (/-----BEGIN PRIVATE KEY-----([^-]*)-----END PRIVATE KEY-----/g.exec get_test_file("test.pem"))[1]
         formatted_key = saml2.format_pem raw_private_key, 'PRIVATE KEY'
@@ -145,7 +150,7 @@ describe 'saml2', ->
         formatted_key = saml2.format_pem get_test_file("test.pem"), 'PRIVATE KEY'
         assert.equal formatted_key, get_test_file("test.pem")
 
-    describe 'sign_get_request', ->
+    describe 'sign_get_request', voidFun ->
       it 'correctly signs a get request', ->
         signed = saml2.sign_request 'TESTMESSAGE', get_test_file("test.pem")
 
@@ -165,7 +170,7 @@ describe 'saml2', ->
         assert.equal signed.RelayState, 'TESTSTATE'
         assert.equal signed.SAMLResponse, 'TESTMESSAGE'
 
-    describe 'sign_authn_request_with_embedded_signature', ->
+    describe 'sign_authn_request_with_embedded_signature', voidFun ->
       it 'correctly embeds the signature', ->
         { id, xml } = saml2.create_authn_request 'https://sp.example.com/metadata.xml', 'https://sp.example.com/assert', 'https://idp.example.com/login'
         signed = saml2.sign_authn_request xml, get_test_file("test.pem")
@@ -173,7 +178,7 @@ describe 'saml2', ->
         assert result, 'validation result should not be null'
         assert.equal result.length, 1, 'validation result should only have 1 item'
 
-    describe 'check_saml_signature', ->
+    describe 'check_saml_signature', voidFun ->
       it 'accepts signed xml', ->
         result = saml2.check_saml_signature(get_test_file("good_assertion.xml"), get_test_file("test.crt"))
         assert.deepEqual result, [get_test_file("good_assertion_signed_data.xml")]
@@ -187,7 +192,7 @@ describe 'saml2', ->
       it 'validates a Response signature when a signature also exists within the Assertion', ->
         assert.notEqual null, saml2.check_saml_signature(get_test_file("good_response_twice_signed.xml"), get_test_file("test.crt"))
 
-    describe 'check_status_success', =>
+    describe 'check_status_success', voidFun =>
       it 'accepts a valid success status', =>
         assert saml2.check_status_success(@good_response_dom), "Did not get 'true' for valid response."
 
@@ -197,7 +202,7 @@ describe 'saml2', ->
       it 'rejects a missing status', ->
         assert not saml2.check_status_success(dom_from_test_file("response_no_status.xml")), "Did not get 'false' for invalid response."
 
-    describe 'pretty_assertion_attributes', ->
+    describe 'pretty_assertion_attributes', voidFun ->
       it 'creates a correct user object', ->
         test_attributes =
           "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress": [ "tuser@example.com" ]
@@ -211,7 +216,7 @@ describe 'saml2', ->
 
         assert.deepEqual saml2.pretty_assertion_attributes(test_attributes), expected
 
-    describe 'decrypt_assertion', =>
+    describe 'decrypt_assertion', voidFun =>
       KEY_1 = get_test_file("test.pem")
       KEY_2 = get_test_file("test2.pem")
 
@@ -226,7 +231,7 @@ describe 'saml2', ->
           assert (err instanceof Error), "Did not get expected error."
           done()
 
-    describe 'parse_response_header', =>
+    describe 'parse_response_header', voidFun =>
       it 'correctly parses a response header', =>
         response = saml2.parse_response_header @good_response_dom
         assert.equal response.destination, 'https://sp.example.com/assert'
@@ -239,14 +244,14 @@ describe 'saml2', ->
       it 'errors if given a response with the wrong version', ->
         assert.throws -> saml2.parse_response_header dom_from_test_file("response_bad_version.xml")
 
-    describe 'parse_logout_request', =>
+    describe 'parse_logout_request', voidFun =>
       it 'correctly parses a logout request', =>
         request = saml2.parse_logout_request dom_from_test_file('logout_request.xml')
         assert.equal request.issuer, 'http://idp.example.com/metadata.xml'
         assert.equal request.name_id, 'tstudent'
         assert.equal request.session_index, '_2'
 
-    describe 'get_name_id', ->
+    describe 'get_name_id', voidFun ->
       it 'gets the correct NameID', ->
         name_id = saml2.get_name_id dom_from_test_file('good_assertion.xml')
         assert.equal name_id, 'tstudent'
@@ -255,7 +260,7 @@ describe 'saml2', ->
         name_id = saml2.get_name_id dom_from_test_file('good_assertion_explicit_namespaces.xml')
         assert.equal name_id, 'tstudent'
 
-    describe 'get_session_info', ->
+    describe 'get_session_info', voidFun ->
       it 'gets the correct session index', ->
         info = saml2.get_session_info dom_from_test_file('good_assertion.xml')
         assert.equal info.index, '_3'
@@ -269,7 +274,7 @@ describe 'saml2', ->
         assert.equal info.not_on_or_after, '2014-03-13T22:35:05.387Z'
 
 
-    describe 'parse_assertion_attributes', ->
+    describe 'parse_assertion_attributes', voidFun ->
       it 'correctly parses assertion attributes', ->
         expected_attributes =
             'http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname': [ 'Test' ]
@@ -293,7 +298,7 @@ describe 'saml2', ->
         attributes = saml2.parse_assertion_attributes dom_from_test_file('blank_assertion.xml')
         assert.deepEqual attributes, {}
 
-    describe 'add_namespaces_to_child_assertions', ->
+    describe 'add_namespaces_to_child_assertions', voidFun ->
       it 'adds namespaces defined by InclusiveNamespaces', ->
         response = saml2.add_namespaces_to_child_assertions get_test_file('namespaced_assertion_with_inclusivenamespaces.xml')
         dom = (new xmldom.DOMParser()).parseFromString response
@@ -333,7 +338,7 @@ describe 'saml2', ->
           'xmlns:foo'
         ]
 
-    describe 'set option defaults', ->
+    describe 'set option defaults', voidFun ->
       it 'sets defaults in the correct order', ->
         options_top =
           option1: "top"
@@ -357,7 +362,7 @@ describe 'saml2', ->
         actual_options = saml2.set_option_defaults options_top, options_middle, options_bottom
         assert.deepEqual actual_options, expected_options
 
-  describe 'post_assert', ->
+  describe 'post_assert', voidFun ->
     it 'returns a user object when passed a valid AuthnResponse', (done) ->
       sp_options =
         entity_id: 'https://sp.example.com/metadata.xml'
@@ -692,7 +697,7 @@ describe 'saml2', ->
         assert (/SAML Response is no longer valid/.test(err.message)), "Unexpected error message:" + err.message
         done()
 
-    context 'when response contains AudienceRestriction', ->
+    context 'when response contains AudienceRestriction', voidFun ->
       sp_options = (properties = {}) ->
         _.extend
           entity_id: 'https://sp.example.com/metadata.xml'
@@ -715,7 +720,7 @@ describe 'saml2', ->
             SAMLResponse: get_test_file("response_audience_no_timing.xml")
         , properties
 
-      it 'rejects an empty audience', ->
+      it 'rejects an empty audience', (done) ->
         sp = new saml2.ServiceProvider sp_options
           audience: 'https://another-sp.example.com/metadata.xml'
         idp = new saml2.IdentityProvider idp_options()
@@ -729,7 +734,7 @@ describe 'saml2', ->
           assert (/SAML Response is not valid for this audience/.test(err.message)), "Unexpected error message:" + err.message
           done()
 
-      context 'and `audience` option is set to a string', ->
+      context 'and `audience` option is set to a string', voidFun ->
         it 'rejects non-matching audience', (done) ->
           sp = new saml2.ServiceProvider sp_options
             audience: 'https://another-sp.example.com/metadata.xml'
@@ -749,7 +754,7 @@ describe 'saml2', ->
             assert not err?, "Got error: #{err}"
             done()
 
-      context 'and `audience` option is set to a regex', ->
+      context 'and `audience` option is set to a regex', voidFun ->
         it 'rejects non-matching audience', (done) ->
           sp = new saml2.ServiceProvider sp_options
             audience: /^https:\/\/another-sp\./
@@ -769,7 +774,7 @@ describe 'saml2', ->
             assert not err?, "Got error: #{err}"
             done()
 
-      context 'and `audience` option is not set', ->
+      context 'and `audience` option is not set', voidFun ->
         it 'accepts any audience', (done) ->
           sp = new saml2.ServiceProvider sp_options()
           idp = new saml2.IdentityProvider idp_options()
@@ -778,7 +783,7 @@ describe 'saml2', ->
             assert not err?, "Got error: #{err}"
             done()
 
-    context 'when response does not contain AudienceRestriction', ->
+    context 'when response does not contain AudienceRestriction', voidFun ->
       idp = new saml2.IdentityProvider
         certificates: [ get_test_file('test.crt'), get_test_file('test2.crt') ]
       request_options =
@@ -814,7 +819,7 @@ describe 'saml2', ->
             assert !err?, 'Response was wrongly rejected'
             done()
 
-  describe 'redirect assert', ->
+  describe 'redirect assert', voidFun ->
 
     it 'returns a user object with passed a valid AuthnResponse', (done) ->
       sp_options =
@@ -862,7 +867,7 @@ describe 'saml2', ->
         assert.deepEqual response, expected_response
         done()
 
-  describe 'ServiceProvider', ->
+  describe 'ServiceProvider', voidFun ->
 
     it 'can be constructed', (done) ->
       sp_options =
@@ -964,7 +969,7 @@ describe 'saml2', ->
       sp.create_login_request_url idp, request_options, (err, login_url, id) ->
         assert not err?, "Error creating login URL: #{err}"
         parsed_url = url.parse login_url, true
-        saml_request = new Buffer(parsed_url.query?.SAMLRequest, 'base64')
+        saml_request = Buffer.from(parsed_url.query?.SAMLRequest, 'base64')
         zlib.inflateRaw saml_request, (err, result) ->
           assert.notEqual result.toString('utf8').indexOf("urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"), -1
           done()
@@ -989,7 +994,7 @@ describe 'saml2', ->
       sp.create_login_request_url idp, request_options, (err, login_url, id) ->
         assert not err?, "Error creating login URL: #{err}"
         parsed_url = url.parse login_url, true
-        saml_request = new Buffer(parsed_url.query?.SAMLRequest, 'base64')
+        saml_request = Buffer.from(parsed_url.query?.SAMLRequest, 'base64')
         zlib.inflateRaw saml_request, (err, result) ->
           assert.notEqual result.toString('utf8').indexOf("urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified"), -1
           done()

@@ -21,8 +21,8 @@ XMLNS =
   EXC_C14N: 'http://www.w3.org/2001/10/xml-exc-c14n#'
 
 class SAMLError extends Error
-  constructor: (@message, @extra) ->
-    super @message
+  constructor: (message, @extra) ->
+    super message
 
 # Creates an AuthnRequest and returns it as a string of xml along with the randomly generated ID for the created
 # request.
@@ -609,7 +609,7 @@ module.exports.ServiceProvider =
 
       async.waterfall [
         (cb_wf) ->
-          raw = new Buffer(options.request_body.SAMLResponse or options.request_body.SAMLRequest, 'base64')
+          raw = Buffer.from(options.request_body.SAMLResponse or options.request_body.SAMLRequest, 'base64')
 
           # Inflate response for redirect requests before parsing it.
           if (options.get_request)

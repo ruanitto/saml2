@@ -34,7 +34,7 @@
     "xml-crypto": "^0.10.0",
     "xml-encryption": "^0.11.0",
     "xml2js": "^0.4.17",
-    "xmlbuilder": "^9.0.1",
+    "xmlbuilder": "^11.0.0",
     "xmldom": "^0.1.27"
   }
 }

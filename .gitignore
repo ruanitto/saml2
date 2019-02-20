@@ -4,3 +4,4 @@ lib-js
 lib-js-cov
 *.html
 package-lock.json
+.idea
