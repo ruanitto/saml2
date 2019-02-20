@@ -1,6 +1,6 @@
 # SAML2-js
 
-[![CircleCI](https://circleci.com/gh/Clever/saml2/tree/master.svg?style=svg)](https://circleci.com/gh/Clever/saml2/tree/master)
+[![CircleCI](https://circleci.com/gh/adampopkiewicz/saml2/tree/master.svg?style=svg)](https://circleci.com/gh/adampopkiewicz/saml2/tree/master)
 
 `saml2-js` is a node module that abstracts away the complexities of the SAML protocol behind an easy to use interface.
 
