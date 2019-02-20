@@ -204,44 +204,6 @@ extract_certificate_data = (certificate) ->
 
   return cert_data.replace(/[\r\n]/g, '')
 
-# This checks the signature of a saml document and returns either array containing the signed data if valid, or null
-# if the signature is invalid. Comparing the result against null is NOT sufficient for signature checks as it doesn't
-# verify the signature is signing the important content, nor is it preventing the parsing of unsigned content.
-check_saml_signature = (xml, certificate) ->
-  doc = (new xmldom.DOMParser()).parseFromString(xml)
-
-  signature = xmlcrypto.xpath(doc, "./*[local-name(.)='Signature' and namespace-uri(.)='http://www.w3.org/2000/09/xmldsig#']")
-  return null unless signature.length is 1
-  sig = new xmlcrypto.SignedXml()
-  sig.keyInfoProvider = getKey: -> format_pem(certificate, 'CERTIFICATE')
-  sig.loadSignature signature[0].toString()
-  valid = sig.checkSignature xml
-  if valid
-    return get_signed_data(doc, sig.references)
-  else
-    return null
-
-# Gets the data that is actually signed according to xml-crypto. This function should mirror the way xml-crypto finds
-# elements for security reasons.
-get_signed_data = (doc, references) ->
-  _.map references, (ref) ->
-    uri = ref.uri
-    if uri[0] is '#'
-      uri = uri.substring(1)
-
-    elem = []
-    if uri is ""
-      elem = xmlcrypto.xpath(doc, "//*")
-    else
-      for idAttribute in ["Id", "ID"]
-        elem = xmlcrypto.xpath(doc, "//*[@*[local-name(.)='" + idAttribute + "']='" + uri + "']")
-        if elem.length > 0
-          break
-
-    unless elem.length > 0
-      throw new Error("Invalid signature; must be a reference to '#{ref.uri}'")
-    elem[0].toString()
-
 # Takes in an xml @dom containing a SAML Status and returns true if at least one status is Success.
 check_status_success = (dom) ->
   status = dom.getElementsByTagNameNS(XMLNS.SAMLP, 'Status')
@@ -304,6 +266,44 @@ decrypt_assertion = (dom, private_keys, cb) ->
     , -> cb new Error("Failed to decrypt assertion with provided key(s): #{util.inspect errors}")
   catch err
     cb new Error("Decrypt failed: #{util.inspect err}")
+
+# This checks the signature of a saml document and returns either array containing the signed data if valid, or null
+# if the signature is invalid. Comparing the result against null is NOT sufficient for signature checks as it doesn't
+# verify the signature is signing the important content, nor is it preventing the parsing of unsigned content.
+check_saml_signature = (xml, certificate) ->
+  doc = (new xmldom.DOMParser()).parseFromString(xml)
+
+  signature = xmlcrypto.xpath(doc, "./*[local-name(.)='Signature' and namespace-uri(.)='http://www.w3.org/2000/09/xmldsig#']")
+  return null unless signature.length is 1
+  sig = new xmlcrypto.SignedXml()
+  sig.keyInfoProvider = getKey: -> format_pem(certificate, 'CERTIFICATE')
+  sig.loadSignature signature[0].toString()
+  valid = sig.checkSignature xml
+  if valid
+    return get_signed_data(doc, sig)
+  else
+    return null
+
+# Gets the data that is actually signed according to xml-crypto. This function should mirror the way xml-crypto finds
+# elements for security reasons.
+get_signed_data = (doc, sig) ->
+  _.map sig.references, (ref) ->
+    uri = ref.uri
+    if uri[0] is '#'
+      uri = uri.substring(1)
+
+    elem = []
+    if uri is ""
+      elem = xmlcrypto.xpath(doc, "//*")
+    else
+      for idAttribute in ["Id", "ID"]
+        elem = xmlcrypto.xpath(doc, "//*[@*[local-name(.)='" + idAttribute + "']='" + uri + "']")
+        if elem.length > 0
+          break
+
+    unless elem.length > 0
+      throw new Error("Invalid signature; must be a reference to '#{ref.uri}'")
+    sig.getCanonXml ref.transforms, elem[0], { inclusiveNamespacesPrefixList: ref.inclusiveNamespacesPrefixList }
 
 # Takes in an xml @dom of an object containing a SAML Response and returns an object containing the Destination and
 # InResponseTo attributes of the Response if present. It will throw an error if the Response is missing or does not
@@ -456,7 +456,7 @@ parse_authn_response = (saml_response, sp_private_keys, idp_certificates, allow_
     (cb_wf) ->
       decrypt_assertion saml_response, sp_private_keys, (err, result) ->
         return cb_wf null, result unless err?
-        return cb_wf err, result unless allow_unencrypted
+        return cb_wf err, result unless allow_unencrypted and err.message == "Expected 1 EncryptedAssertion; found 0."
         assertion = saml_response.getElementsByTagNameNS(XMLNS.SAML, 'Assertion')
         unless assertion.length is 1
           return cb_wf new Error("Expected 1 Assertion or 1 EncryptedAssertion; found #{assertion.length}")
@@ -527,11 +527,14 @@ module.exports.ServiceProvider =
     constructor: (options) ->
       {@entity_id, @private_key, @certificate, @assert_endpoint, @logout_endpoint, @alt_private_keys, @alt_certs, @nameid_format, @allow_unencrypted_assertion, @sign_get_request} = options
 
+      options.audience ?= @entity_id
+      options.notbefore_skew ?= 1
+
       @alt_private_keys = [].concat(@alt_private_keys or [])
       @alt_certs = [].concat(@alt_certs or [])
 
       @shared_options = _(options).pick(
-        "force_authn", "auth_context", "nameid_format", "sign_get_request", "allow_unencrypted_assertion")
+        "force_authn", "auth_context", "nameid_format", "sign_get_request", "allow_unencrypted_assertion", "audience", "notbefore_skew")
 
     # Returns:
     #   Redirect URL at which a user can login
@@ -546,7 +549,10 @@ module.exports.ServiceProvider =
       { id, xml } = create_authn_request @entity_id, @assert_endpoint, identity_provider.sso_login_url, options.force_authn, options.auth_context, options.nameid_format
       zlib.deflateRaw xml, (err, deflated) =>
         return cb err if err?
-        uri = url.parse identity_provider.sso_login_url, true
+        try
+          uri = url.parse identity_provider.sso_login_url, true
+        catch ex
+          return cb ex
         delete uri.search # If you provide search and query search overrides query :/
         if options.sign_get_request
           _(uri.query).extend sign_request(deflated.toString('base64'), @private_key, options.relay_state)
@@ -595,6 +601,9 @@ module.exports.ServiceProvider =
       unless options.request_body?.SAMLResponse? or options.request_body?.SAMLRequest?
         return setImmediate cb, new Error("Request body does not contain SAMLResponse or SAMLRequest.")
 
+      unless _.isNumber(options.notbefore_skew)
+        return setImmediate cb, new Error("Configuration error: `notbefore_skew` must be a number")
+
       saml_response = null
       response = {}
 
@@ -619,9 +628,32 @@ module.exports.ServiceProvider =
           switch
             when saml_response.getElementsByTagNameNS(XMLNS.SAMLP, 'Response').length is 1
               unless check_status_success(saml_response)
-                cb_wf new SAMLError("SAML Response was not success!", {status: get_status(saml_response)})
+                return cb_wf new SAMLError("SAML Response was not success!", {status: get_status(saml_response)})
 
               response.type = 'authn_response'
+
+              conditions = saml_response.getElementsByTagNameNS(XMLNS.SAML, 'Conditions')[0]
+              if conditions?
+                if options.ignore_timing != true
+                  for attribute in conditions.attributes
+                    condition = attribute.name.toLowerCase()
+                    if condition == 'notbefore' and Date.parse(attribute.value) > Date.now() + (options.notbefore_skew * 1000)
+                      return cb_wf new SAMLError('SAML Response is not yet valid', {NotBefore: attribute.value})
+                    if condition == 'notonorafter' and Date.parse(attribute.value) <= Date.now()
+                      return cb_wf new SAMLError('SAML Response is no longer valid', {NotOnOrAfter: attribute.value})
+
+                audience_restriction = conditions.getElementsByTagNameNS(XMLNS.SAML, 'AudienceRestriction')[0]
+                audiences = audience_restriction?.getElementsByTagNameNS(XMLNS.SAML, 'Audience')
+                if audiences?.length > 0
+                  validAudience = _.find audiences, (audience) ->
+                    audienceValue = audience.firstChild?.data?.trim()
+                    !_.isEmpty(audienceValue?.trim()) and (
+                      (_.isRegExp(options.audience) and options.audience.test(audienceValue)) or
+                      (_.isString(options.audience) and options.audience.toLowerCase() == audienceValue.toLowerCase())
+                    )
+                  if !validAudience?
+                    return cb_wf new SAMLError('SAML Response is not valid for this audience')
+
               parse_authn_response(
                 saml_response,
                 [@private_key].concat(@alt_private_keys),
@@ -633,7 +665,7 @@ module.exports.ServiceProvider =
 
             when saml_response.getElementsByTagNameNS(XMLNS.SAMLP, 'LogoutResponse').length is 1
               unless check_status_success(saml_response)
-                cb_wf new SAMLError("SAML Response was not success!", {status: get_status(saml_response)})
+                return cb_wf new SAMLError("SAML Response was not success!", {status: get_status(saml_response)})
 
               response.type = 'logout_response'
               setImmediate cb_wf, null, {}
@@ -661,7 +693,10 @@ module.exports.ServiceProvider =
       {id, xml} = create_logout_request @entity_id, options.name_id, options.session_index, identity_provider.sso_logout_url, options.name_id_format
       zlib.deflateRaw xml, (err, deflated) =>
         return cb err if err?
-        uri = url.parse identity_provider.sso_logout_url, true
+        try
+          uri = url.parse identity_provider.sso_logout_url, true
+        catch ex
+          return cb ex
         query = null
         if options.sign_get_request
           query = sign_request deflated.toString('base64'), @private_key, options.relay_state
@@ -686,7 +721,10 @@ module.exports.ServiceProvider =
       xml = create_logout_response @entity_id, options.in_response_to, identity_provider.sso_logout_url
       zlib.deflateRaw xml, (err, deflated) =>
         return cb err if err?
-        uri = url.parse identity_provider.sso_logout_url
+        try
+          uri = url.parse identity_provider.sso_logout_url
+        catch ex
+          return cb ex
         if options.sign_get_request
           uri.query = sign_request deflated.toString('base64'), @private_key, options.relay_state, true
         else
