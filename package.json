@@ -1,5 +1,5 @@
 {
-  "name": "saml2-js-viq",
+  "name": "@ruanitto/saml2-js",
   "version": "2.0.5",
   "description": "SAML 2.0 node helpers",
   "author": "Clever",
@@ -14,14 +14,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "git://github.com/Clever/saml2.git"
+    "url": "git://github.com/ruanitto/saml2.git"
   },
   "keywords": [
     "saml",
     "node"
   ],
   "bugs": {
-    "url": "https://github.com/Clever/saml2/issues"
+    "url": "https://github.com/ruanitto/saml2/issues"
   },
   "devDependencies": {
     "mocha": "^6.0.0",

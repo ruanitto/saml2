@@ -9,7 +9,7 @@
 Install with [npm](https://www.npmjs.com/).
 
 ```bash
-  npm install saml2-js --save
+  npm install @ruanitto/saml2-js --save
 ```
 
 Include the SAML library.

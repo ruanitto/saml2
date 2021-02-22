@@ -61,7 +61,7 @@ sign_authn_request = (xml, private_key, options) ->
   return signer.getSignedXml()
 
 # Creates metadata and returns it as a string of XML. The metadata has one POST assertion endpoint.
-create_metadata = (entity_id, assert_endpoint, signing_certificates, encryption_certificates, logout_endpoint, nameid_format, authn_requests_signed = false, want_assertions_signed = false) ->
+create_metadata = (entity_id, assert_endpoint, signing_certificates, encryption_certificates, logout_endpoint, nameid_format, authn_requests_signed = false, organization_name = 'Organization Name', organization_display_name = 'Organization', organization_url = 'https://organization.com', want_assertions_signed = false) ->
   unless logout_endpoint
     logout_endpoint = assert_endpoint
   signing_cert_descriptors = for signing_certificate in signing_certificates or []
@@ -107,9 +107,9 @@ create_metadata = (entity_id, assert_endpoint, signing_certificates, encryption_
       '@validUntil': (new Date(Date.now() + 1000 * 60 * 60)).toISOString()
       'md:SPSSODescriptor': sp_sso_descriptor
       'md:Organization': {
-        'md:OrganizationName': { '@xml:lang': 'en-US', '#text': 'Venture IQ, B.V.' }
-        'md:OrganizationDisplayName': { '@xml:lang': 'en-US', '#text': 'Venture IQ' }
-        'md:OrganizationURL': { '@xml:lang': 'en-US', '#text': 'https://ventureiq.nl' }
+        'md:OrganizationName': { '@xml:lang': 'en-US', '#text': organization_name }
+        'md:OrganizationDisplayName': { '@xml:lang': 'en-US', '#text': organization_display_name }
+        'md:OrganizationURL': { '@xml:lang': 'en-US', '#text': organization_url }
       }
   .end()
 
@@ -736,7 +736,7 @@ module.exports.ServiceProvider =
     #   XML metadata, used during initial SAML configuration
     create_metadata: =>
       certs = [@certificate].concat @alt_certs
-      create_metadata @entity_id, @assert_endpoint, certs, certs, @logout_endpoint, @nameid_format, @sign_get_request, !@allow_unencrypted_assertion
+      create_metadata @entity_id, @assert_endpoint, certs, certs, @logout_endpoint, @nameid_format, @sign_get_request, !@allow_unencrypted_assertion, @organization_name, @organization_display_name, @organization_url
 
 module.exports.IdentityProvider =
   class IdentityProvider
