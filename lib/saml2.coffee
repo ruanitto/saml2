@@ -525,7 +525,7 @@ module.exports.ServiceProvider =
     #
     # Rest of options can be set/overwritten by the identity provider and/or at function call.
     constructor: (options) ->
-      {@entity_id, @private_key, @certificate, @assert_endpoint, @logout_endpoint, @alt_private_keys, @alt_certs, @nameid_format, @allow_unencrypted_assertion, @sign_get_request} = options
+      {@entity_id, @private_key, @certificate, @assert_endpoint, @logout_endpoint, @alt_private_keys, @alt_certs, @nameid_format, @allow_unencrypted_assertion, @organization_name, @organization_display_name, @organization_url, @sign_get_request} = options
 
       options.audience ?= @entity_id
       options.notbefore_skew ?= 1
