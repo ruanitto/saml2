@@ -61,7 +61,7 @@ sign_authn_request = (xml, private_key, options) ->
   return signer.getSignedXml()
 
 # Creates metadata and returns it as a string of XML. The metadata has one POST assertion endpoint.
-create_metadata = (entity_id, assert_endpoint, signing_certificates, encryption_certificates, logout_endpoint, nameid_format, authn_requests_signed = false, organization_name = 'Organization Name', organization_display_name = 'Organization', organization_url = 'https://organization.com', want_assertions_signed = false) ->
+create_metadata = (entity_id, assert_endpoint, signing_certificates, encryption_certificates, logout_endpoint, nameid_format, authn_requests_signed = false, want_assertions_signed = false, organization_name = 'Organization Name', organization_display_name = 'Organization', organization_url = 'https://organization.com') ->
   unless logout_endpoint
     logout_endpoint = assert_endpoint
   signing_cert_descriptors = for signing_certificate in signing_certificates or []
