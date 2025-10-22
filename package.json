@@ -24,8 +24,8 @@
     "url": "https://github.com/ruanitto/saml2/issues"
   },
   "devDependencies": {
-    "mocha": "^6.0.0",
-    "coffeescript": "^2.3.2"
+    "coffeescript": "^2.3.2",
+    "mocha": "^6.0.0"
   },
   "dependencies": {
     "async": "^2.5.0",

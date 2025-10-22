@@ -356,9 +356,17 @@ get_session_info = (dom, index_required=true) ->
   authn_statement = assertion[0].getElementsByTagNameNS(XMLNS.SAML, 'AuthnStatement')
   throw new Error("Expected 1 AuthnStatement; found #{authn_statement.length}") unless authn_statement.length is 1
 
+  assertion_conditions = assertion[0].getElementsByTagNameNS(XMLNS.SAML, 'Conditions')
+
   info =
     index: get_attribute_value authn_statement[0], 'SessionIndex'
     not_on_or_after: get_attribute_value authn_statement[0], 'SessionNotOnOrAfter'
+
+  if assertion_conditions.length is 1
+    info.conditions =
+      not_before: get_attribute_value authn_statement[0], 'NotBefore'
+      not_on_or_after: get_attribute_value authn_statement[0], 'NotOnOrAfter'
+
 
   if index_required and not info.index?
     throw new Error("SessionIndex not an attribute of AuthnStatement.")
@@ -489,6 +497,9 @@ parse_authn_response = (saml_response, sp_private_keys, idp_certificates, allow_
         user.session_index = session_info.index
         if session_info.not_on_or_after?
           user.session_not_on_or_after = session_info.not_on_or_after
+
+        if session_info.conditions?
+          user.session_conditions = session_info.conditions
 
         assertion_attributes = parse_assertion_attributes decrypted_assertion
         user = _.extend user, pretty_assertion_attributes(assertion_attributes)
